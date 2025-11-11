@@ -1,0 +1,8 @@
+pymilvus
+requests
+bs4
+dotenv
+autogen_ext
+autogen_agentchat
+autogen_core
+asyncio
