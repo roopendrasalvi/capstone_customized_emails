@@ -8,3 +8,5 @@ autogen_core
 asyncio
 openai
 tiktoken
+fastapi
+uvicorn
