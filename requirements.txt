@@ -10,3 +10,6 @@ openai
 tiktoken
 fastapi
 uvicorn
+langchain_openai
+langchain_classic
+langchain_pinecone
