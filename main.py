@@ -10,7 +10,11 @@ from pymilvus import MilvusClient
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings 
 from langchain_pinecone import Pinecone
 from langchain_classic.chains import RetrievalQA
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain.agents import create_agent
 import pinecone
+import asyncio
 import os
 from dotenv import load_dotenv
 from pinecone import ServerlessSpec
@@ -26,6 +30,47 @@ AZURE_DEPLOYMENT_NAME = os.getenv("DEPLOYMENT_NAME")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 endpoint = "https://in03-583f886391f254a.serverless.aws-eu-central-1.cloud.zilliz.com"
 token = "9b27dfcdd4a6c842c7fa56c4f034b442915c0ae5c0c0d483a5300adbd14687a377c050acbe602eca96a0a5219db776363b48d0a7"
+
+custom_prompt = ChatPromptTemplate.from_template("""
+You are a reasoning AI assistant with access to multiple MCP tools:
+- Birthday: for writing birthday emails
+- Actionable: for drafting actionable emails
+                                                 
+Your task is to classify incoming emails into one of the following categories:
+                                                 
+Use tools when needed, and clearly show your reasoning steps.
+""")
+
+model_client = AzureOpenAIChatCompletionClient(
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    api_key=AZURE_OPENAI_KEY,
+    api_version=API_VERSION,
+    model=AZURE_DEPLOYMENT_NAME
+)
+
+async def main():
+    client = MultiServerMCPClient(
+        {
+            "Birthday": {
+                "command": "python",
+                "args": ["-m", "capstone_customized_emails.birthday_agent"],
+                "transport": "stdio",
+            }
+            # "Actionable": {
+            #     "command": "python",
+            #     "args": ["-m", "capstone_customized_emails.actionable_agent"],                
+            #     "transport": "stdio"
+            # },
+        }
+    )
+
+    tools = await client.get_tools()
+
+    agent = create_agent(
+        model = model_client,
+        tools = tools
+    )
+
 
 embeddings = AzureOpenAIEmbeddings(
     deployment="text-embedding-3-small",
@@ -45,12 +90,7 @@ termination = text_mention_termination | max_message_termination
 #   uri= endpoint,
 #   token= token)
 
-model_client = AzureOpenAIChatCompletionClient(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    api_key=AZURE_OPENAI_KEY,
-    api_version=API_VERSION,
-    model=AZURE_DEPLOYMENT_NAME
-)   
+   
 
 classification_agent = AssistantAgent(
     "EmailClassificationAgent",
@@ -95,26 +135,29 @@ def setup_pinecone():
 
 def split_text(texts):
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=100,
+        chunk_overlap=20,
     )
     chunks = text_splitter.split_text(texts)
     return text_splitter, chunks
 
 def create_index(pc):
-    index_name = "capstone-email-embeddings"
+    index_name = "emp01-arjun"
     if index_name not in pc.list_indexes().names():
         pc.create_index(name=index_name, dimension=1536, metric="cosine", spec = ServerlessSpec( cloud = "aws", region = "us-east-1"))
     return index_name
 
-def store_vectors(text_splitter, texts, index_name):
+def store_vectors(text_splitter, texts, index_name, pc):
+    index = pc.Index(host = "https://capstone-email-embeddings-nosu4uj.svc.aped-4627-b74a.pinecone.io")
     chunk =  text_splitter.create_documents(texts)
 
+    # vectorstore = index.upsert(chunk)
     vectorstore = Pinecone.from_documents(
         documents=chunk,
         embedding=embeddings,
         index_name=index_name
     )
+    
     return vectorstore
 
 def define_llm():
@@ -152,13 +195,13 @@ async def get_email(subject: str, body: str):
     pc = setup_pinecone()
     text_splitter, chunks = split_text(body)
     index_name = create_index(pc)
-    vector_store = store_vectors(text_splitter, chunks, index_name)
+    vector_store = store_vectors(text_splitter, chunks, index_name, pc)
     return {"message": f"Email processed and vectors stored successfully.{vector_store}"}
 
 @app.post("/query/")
 async def query(query: str):
     vector_store = Pinecone.from_existing_index(
-        index_name="capstone-email-embeddings",
+        index_name="emp02-sophia",
         embedding=embeddings
     )
     llm = define_llm()
@@ -174,7 +217,7 @@ async def query(query: str):
 
 @app.post("/categorize_email/")
 async def categorize_email(subject: str, body: str):
-    response = await classification_agent.on_messages([TextMessage(content=f"Respond with category name with small intent about {subject} and {body} explaining why you think that mail is of that specific category. ", source="user")], cancellation_token=None)
+    response = await classification_agent.on_messages([TextMessage(content=f"Categorize the mail as per {body} and ask the specific agent to perform action.", source="user")], cancellation_token=None)
     return {"email": response.chat_message.content}
 
 @app.post("/actionable_email/")
@@ -182,6 +225,10 @@ async def actionable_email(subject: str, body: str):
     response = await actionable_agent.on_messages([TextMessage(content=f"Respond with category name with small intent about {subject} and {body} explaining why you think that mail is of that specific category. ", source="user")], cancellation_token=None)
     return {"email": response.chat_message.content}
 
+
+if __name__:
+    asyncio.run(main())
+    # uvicorn.run(app, host="
 # db_client.create_collection(
 #     collection_name="demo_aarti",
 #     dimension=768,  # The vectors we will use in this demo have 768 dimensions
