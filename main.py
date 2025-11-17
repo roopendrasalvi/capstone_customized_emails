@@ -19,6 +19,7 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from pinecone import ServerlessSpec
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -187,6 +188,7 @@ team = SelectorGroupChat(
     termination_condition=termination
 )
 
+# for api based 
 @app.post("/get_email/")
 async def get_email(subject: str, body: str):
     pc = setup_pinecone()
@@ -255,4 +257,24 @@ async def actionable_email(subject: str, body: str):
 #     collection_name="demo_aarti",
 #     dimension=768,  # The vectors we will use in this demo have 768 dimensions
 # )
+
+#####################################################################################
+
+#front end
+
+class EmailRequest(BaseModel):
+    email_id:str
+    subject:str
+    body:str
+
+@app.post("/get-email")
+async def get_email(req: EmailRequest):
+    # email_id = req.email_id
+    # subject = req.subject
+    body = req.body
+    pc = setup_pinecone()
+    text_splitter, chunks = split_text(body)
+    index_name = create_index(pc)
+    vector_store = store_vectors(text_splitter, chunks, index_name, pc)
+    return {"message": f"Email processed and vectors stored successfully.{vector_store}"}
 
