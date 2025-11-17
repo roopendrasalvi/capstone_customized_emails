@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 import uvicorn
 from autogen_agentchat.messages import TextMessage
-from autogen_agentchat.teams import SelectorGroupChat
-from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.teams import SelectorGroupChat, RoundRobinGroupChat
+from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
-from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination    
+from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
+from autogen_agentchat.ui import Console    
 from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
 from pymilvus import MilvusClient
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings 
@@ -48,28 +49,23 @@ model_client = AzureOpenAIChatCompletionClient(
     model=AZURE_DEPLOYMENT_NAME
 )
 
-async def main():
-    client = MultiServerMCPClient(
-        {
-            "Birthday": {
-                "command": "python",
-                "args": ["-m", "capstone_customized_emails.birthday_agent"],
-                "transport": "stdio",
-            }
-            # "Actionable": {
-            #     "command": "python",
-            #     "args": ["-m", "capstone_customized_emails.actionable_agent"],                
-            #     "transport": "stdio"
-            # },
-        }
-    )
+# async def main():
+#     client = MultiServerMCPClient(
+#         {
+#             "Birthday": {
+#                 "command": "python",
+#                 "args": ["capstone_customized_emails.birthday_agent"],
+#                 "transport": "stdio"
+#             }
+#         }
+#     )
 
-    tools = await client.get_tools()
+#     tools = await client.get_tools()
 
-    agent = create_agent(
-        model = model_client,
-        tools = tools
-    )
+#     agent = create_agent(
+#         model = model_client,
+#         tools = tools
+#     )
 
 
 embeddings = AzureOpenAIEmbeddings(
@@ -111,7 +107,8 @@ birthday_agent = AssistantAgent(
     "BirthdayEmailAssistant",
     description="An assistant that specializes in drafting customized birthday emails.",
     model_client=model_client,
-    system_message = '''You are an expert birthday email assistant. Your task is to help draft customized birthday emails using the provided email templates. Ensure that the messages are warm, professional, and tailored to the recipient's preferences.'''
+    system_message = '''You are an expert birthday email assistant. Your task is to help draft customized birthday emails using the provided email templates. Ensure that the messages are warm, professional, and tailored to the recipient's preferences.
+    Make sure to respond with agent name at the end of the mail.'''
 )
 
 actionable_agent = AssistantAgent(
@@ -124,7 +121,7 @@ actionable_agent = AssistantAgent(
     3. Leave mails: Mails related to leave requests or approvals.
     4. Meeting mails: Mails concerning meeting schedules or invitations.
 
-    Your task is to help draft actionable emails using the provided email templates. 
+    Your task is to ask user if user wants to approve or deny and draft actionable emails accordingly using the provided email templates.
     Make sure to mention category in which mail falls in the beginning of the mail.
     Ensure that the messages are clear, concise, and prompt the recipient to take the desired action.'''
 )
@@ -185,7 +182,7 @@ def create_chain(llm, retriever):
     return chain
 
 team = SelectorGroupChat(
-    [birthday_agent, actionable_agent, classification_agent],
+    [classification_agent, birthday_agent, actionable_agent],
     model_client=model_client,
     termination_condition=termination
 )
@@ -217,8 +214,33 @@ async def query(query: str):
 
 @app.post("/categorize_email/")
 async def categorize_email(subject: str, body: str):
-    response = await classification_agent.on_messages([TextMessage(content=f"Categorize the mail as per {body} and ask the specific agent to perform action.", source="user")], cancellation_token=None)
-    return {"email": response.chat_message.content}
+    task = body
+    agent = UserProxyAgent("user_proxy", input_func=input)
+
+    team1 = RoundRobinGroupChat([actionable_agent, agent], termination_condition=termination)
+
+    stream = team1.run_stream(task= task)
+    return {"response": await Console(stream)}
+
+    # async for event in team.run_stream(task = task):
+    #     print(event)
+    #     return {"event": event}
+    # print(team.run_stream(task = task))
+    # agent = UserProxyAgent("user_proxy")
+    # response = await asyncio.create_task(
+    #     agent.on_messages( 
+    #          [TextMessage (content = await agent.on_messages( 
+    #             messages = ([TextMessage (content = task , source="user").content]) ,
+    #             cancellation_token=None) , source ="user" )],
+    #             cancellation_token=None)
+    # )
+    # return {"response": response}
+        # if event == "prompt":
+        #     return {"response": event}
+        # elif event == "response":
+        #     return {"response": event}
+    # return {"response":await Console(team.run_stream(task = task))}
+    # return {"email": response.chat_message.content}
 
 @app.post("/actionable_email/")
 async def actionable_email(subject: str, body: str):
@@ -226,8 +248,8 @@ async def actionable_email(subject: str, body: str):
     return {"email": response.chat_message.content}
 
 
-if __name__:
-    asyncio.run(main())
+# if __name__:
+#     asyncio.run(main())
     # uvicorn.run(app, host="
 # db_client.create_collection(
 #     collection_name="demo_aarti",

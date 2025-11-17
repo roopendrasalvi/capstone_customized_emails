@@ -1,4 +1,5 @@
 from mcp.server.fastmcp import FastMCP
+# from fastmcp import FastMCP
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.messages import TextMessage
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 mcp = FastMCP("Birthday")
+print(mcp)
 
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
