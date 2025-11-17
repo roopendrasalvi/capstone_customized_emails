@@ -43,7 +43,7 @@ with left:
 
 
     Query = st.text_input("Query")
-    # st.button("Ask")
+    st.button("Ask")
 
     
     # st.button("Generate Summery of the day")
