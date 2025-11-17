@@ -66,6 +66,6 @@ with right:
     #     height=350
     # )
 
-    # st.button("Generate Summery of the day")
+    st.button("Generate Summery of the day")
     # st.write()
  
