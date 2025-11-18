@@ -30,8 +30,6 @@ AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
 API_VERSION = "2024-05-01-preview"
 AZURE_DEPLOYMENT_NAME = os.getenv("DEPLOYMENT_NAME")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-endpoint = "https://in03-583f886391f254a.serverless.aws-eu-central-1.cloud.zilliz.com"
-token = "9b27dfcdd4a6c842c7fa56c4f034b442915c0ae5c0c0d483a5300adbd14687a377c050acbe602eca96a0a5219db776363b48d0a7"
 
 custom_prompt = ChatPromptTemplate.from_template("""
 You are a reasoning AI assistant with access to multiple MCP tools:
@@ -140,7 +138,7 @@ def split_text(texts):
     return text_splitter, chunks
 
 def create_index(pc):
-    index_name = "emp01-arjun"
+    index_name = "emp01"
     if index_name not in pc.list_indexes().names():
         pc.create_index(name=index_name, dimension=1536, metric="cosine", spec = ServerlessSpec( cloud = "aws", region = "us-east-1"))
     return index_name
@@ -171,7 +169,7 @@ def define_llm():
     return llm
 
 def create_retriever(vector_store):
-    retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k":2})
+    retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k":10})
     return retriever
 
 def create_chain(llm, retriever):
@@ -187,8 +185,10 @@ team = SelectorGroupChat(
     model_client=model_client,
     termination_condition=termination
 )
-
+###########################################################################################
 # for api based 
+###########################################################################################
+
 @app.post("/get_email/")
 async def get_email(subject: str, body: str):
     pc = setup_pinecone()
@@ -214,15 +214,15 @@ async def query(query: str):
     # response = await team.on_messages([TextMessage(content=f"Draft a customized email for the mail with subject {subject} and body {body}.", source="user")], cancellation_token=None)
     # return {"email": texts}
 
-@app.post("/categorize_email/")
-async def categorize_email(subject: str, body: str):
-    task = body
-    agent = UserProxyAgent("user_proxy", input_func=input)
+# @app.post("/categorize_email/")
+# async def categorize_email(subject: str, body: str):
+#     task = body
+#     agent = UserProxyAgent("user_proxy", input_func=input)
 
-    team1 = RoundRobinGroupChat([actionable_agent, agent], termination_condition=termination)
+#     team1 = RoundRobinGroupChat([actionable_agent, agent], termination_condition=termination)
 
-    stream = team1.run_stream(task= task)
-    return {"response": await Console(stream)}
+#     stream = team1.run_stream(task= task)
+#     return {"response": await Console(stream)}
 
     # async for event in team.run_stream(task = task):
     #     print(event)
@@ -259,22 +259,51 @@ async def actionable_email(subject: str, body: str):
 # )
 
 #####################################################################################
-
 #front end
-
+#####################################################################################
 class EmailRequest(BaseModel):
-    email_id:str
+    # email_id:str
     subject:str
     body:str
 
-@app.post("/get-email")
+@app.post("/get_email/")
 async def get_email(req: EmailRequest):
     # email_id = req.email_id
-    # subject = req.subject
+    subject = req.subject
     body = req.body
+    print(body)
     pc = setup_pinecone()
     text_splitter, chunks = split_text(body)
     index_name = create_index(pc)
     vector_store = store_vectors(text_splitter, chunks, index_name, pc)
-    return {"message": f"Email processed and vectors stored successfully.{vector_store}"}
+    task = body
+    agent = UserProxyAgent("user_proxy", input_func=input)
+    # team1 = RoundRobinGroupChat([birthday_agent,actionable_agent, agent], termination_condition=termination)
+    stream = team.run_stream(task= task)
+    result = await Console(stream)
+    final_message = result.messages[1].content #for bday
+    # final_message = result.messages[0].content
+    return {"result": final_message}
 
+    # # If result is a list of messages:
+    # if isinstance(result, list):
+    #     final_message = result[-1]["content"]   # last message from agent
+    # else:
+    #     final_message = result("content", result)
+    # return {"result": final_message}
+
+class QueryRequest(BaseModel):
+    query: str
+
+@app.post("/query/")
+async def query(req: QueryRequest):
+    query=req.query
+    vector_store = Pinecone.from_existing_index(
+        index_name="emp02-sophia",
+        embedding=embeddings
+    )
+    llm = define_llm()
+    retriever = create_retriever(vector_store)
+    chain = create_chain(llm, retriever)
+    result = chain.invoke(query)
+    return {'result':result}
