@@ -1,0 +1,6 @@
+pymilvus == 2.3.6
+sentence-transformers
+numpy
+pyyaml
+python-dotenv
+tqdm

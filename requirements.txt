@@ -13,3 +13,5 @@ uvicorn
 langchain_openai
 langchain_classic
 langchain_pinecone
+langchain_mcp_adapters
+langchain_core

@@ -42,25 +42,67 @@ with left:
         else:
             st.error("Error calling backend")
 
-    Query = st.text_input("Query")
-    if st.button("Ask"):
+    query = st.text_input("Query")
+    # if st.button("Ask"):
 
-        payload = {"query": Query}
+    #     payload = {"query": Query}
 
-        response = requests.post("http://127.0.0.1:8051/query/",json=payload)
-        if response.status_code == 200:
-            st.session_state["generated"] = response.json()["result"]
-        else:
-            st.error("Error calling backend")
+    #     response = requests.post("http://127.0.0.1:8051/query/",json=payload)
+    #     print(response.json())
+    #     if response.status_code == 200:
+    #         st.session_state["generated"] = response.json()["result"]
+    #     else:
+    #         st.error("Error calling backend")
   
+    # if "messages" not in st.session_state:        
+    #     st.session_state.messages = []
+    # elif len(st.session_state.messages) > 0:
+    #     prompt = st.session_state.messages[0]['content']
 
-with right:
-    st.header("Output Panel")
-    st.text_area(
-        "Generated Output/Query Output", 
-        value=st.session_state.get("generated", ""), 
-        height=550
-    )
+    # for message in st.session_state.messages:
+    #     with st.chat_message(message["role"]):
+    #         st.markdown(message["content"])
+    #     if query := st.chat_input("Assistant: "):
+    #         st.session_state.messages.append({"role": "user", "content": query})
+    if query:
+        with st.chat_message("user"):
+            st.markdown(query)
+
+            # with st.chat_message("assistant"):
+                
+            payload = {"body": query}
+
+            response = requests.post("http://127.0.0.1:8000/categorize_email/",json=payload)
+            print(response)
+            if response.status_code == 200:
+                st.session_state["generated"] = response.json()["result"]
+            else:
+                st.error("Error calling backend")
+
+            # st.text_area(
+            #     "Generated Output/Query Output", 
+            #     value=st.session_state.get("generated", ""), 
+            #     height=550
+            # )
+            # messages=PromptTemplate(template = "You are a helpful AI assistant.") 
+        #     messages = [
+        #         SystemMessage(content= prompt),
+        #         HumanMessage(content=query)
+        #     ]
+    
+        # response = client.invoke(messages)
+
+        st.write(response.content)
+
+        # st.session_state.messages.append({"role": "assistant", "content": response.content})
+
+# with right:
+#     st.header("Output Panel")
+#     st.text_area(
+#         "Generated Output/Query Output", 
+#         value=st.session_state.get("generated", ""), 
+#         height=550
+#     )
     # st.button("Generate Summery of the day")
     # st.write()
 
